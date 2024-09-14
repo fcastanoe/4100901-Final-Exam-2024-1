@@ -1,9 +1,9 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
+  **************************
   * @file           : main.c
   * @brief          : Main program body
-  ******************************************************************************
+  **************************
   * @attention
   *
   * Copyright (c) 2024 STMicroelectronics.
@@ -13,7 +13,7 @@
   * in the root directory of this software component.
   * If no LICENSE file comes with this software, it is provided AS-IS.
   *
-  ******************************************************************************
+  **************************
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
@@ -58,6 +58,8 @@ char usart_display_buffer[MAX_USART_DIGITS + 1]; // Buffer de visualización par
 uint8_t display_index = 0;  // Índice para el buffer de teclado
 uint8_t usart_display_index = 0;  // Índice para el buffer de USART2
 volatile int count_uart = 0;
+// Flag para operaciones
+volatile uint8_t flag_sum = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -117,7 +119,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     if (GPIO_Pin == B1_Pin) {
-        return;
+        flag_sum = 1;
     }
 
     uint8_t key_pressed = keypad_scan(GPIO_Pin);
@@ -200,13 +202,33 @@ int main(void)
     while (1)
     {
         // Bucle principal
+        if (flag_sum!=0)
+        {
+            int sum = 0;
+            // verfica si hay datos en el buffer de uart y teclado
+            if (display_index > 0 && usart_display_index > 0)
+            {
+                // Convertir los datos a enteros
+                int num1 = atoi(display_buffer);
+                int num2 = atoi(usart_display_buffer);
+                sum = num1 + num2;
+                printf("Suma: %d\r\n", sum);
+                sprintf(uart_num, "%d", sum);
+                HAL_UART_Transmit(&huart2, (uint8_t *)uart_num, strlen(uart_num), 1000);
+                HAL_UART_Transmit(&huart2, (uint8_t *)"\r\n", 2, 1000);
+                flag_sum = 0;
+            }
+            else
+            {
+                printf("Error: No hay datos suficientes\r\n");
+            }
+        }
     }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   /* USER CODE END 3 */
 }
-
 
 /**
   * @brief System Clock Configuration
