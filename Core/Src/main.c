@@ -36,7 +36,7 @@
 #define USART2_RB_LEN 6
 #define DISPLAY_BUFFER_SIZE 5  // Buffer para 4 dígitos + terminador
 #define MAX_DIGITS 4           // Límite de dígitos
-#define UART_BUFFER_SIZE 6     // Tamaño máximo de dígitos a recibir por USART2
+#define MAX_USART_DIGITS 6      // Límite de dígitos por USART2
 /* USER CODE END PD */
 
 /* Private variables ---------------------------------------------------------*/
@@ -52,10 +52,11 @@ uint8_t usart2_data = 0xFF;
 uint8_t usart2_buffer[USART2_RB_LEN];
 ring_buffer_t usart2_rb;
 
-char uart_num[UART_BUFFER_SIZE + 1];  // Buffer para recibir el número por UART (6 dígitos + terminador)
-char display_buffer[DISPLAY_BUFFER_SIZE];  // Buffer de visualización
-uint8_t display_index = 0;                 // Índice para el buffer
-
+char uart_num[7];
+char display_buffer[DISPLAY_BUFFER_SIZE];  // Buffer de visualización para Keypad
+char usart_display_buffer[MAX_USART_DIGITS + 1]; // Buffer de visualización para USART2
+uint8_t display_index = 0;  // Índice para el buffer de teclado
+uint8_t usart_display_index = 0;  // Índice para el buffer de USART2
 volatile int count_uart = 0;
 /* USER CODE END PV */
 
@@ -79,80 +80,72 @@ int _write(int file, char *ptr, int len)
 void Update_Display()
 {
     ssd1306_Fill(Black);  // Limpia la pantalla
-    ssd1306_SetCursor(0, 0);  // Posiciona el cursor en la pantalla OLED
-    ssd1306_WriteString(display_buffer, Font_7x10, White);  // Escribe el contenido del buffer
-    ssd1306_UpdateScreen();  // Actualiza la pantalla
+
+    // Mostrar el buffer del Keypad
+    ssd1306_SetCursor(0, 0);
+    ssd1306_WriteString("Keypad: ", Font_7x10, White);
+    ssd1306_WriteString(display_buffer, Font_7x10, White);
+
+    // Mostrar el buffer del USART2
+    ssd1306_SetCursor(0, 15);  // Ajustar la posición para no sobreponer
+    ssd1306_WriteString("USART2: ", Font_7x10, White);
+    ssd1306_WriteString(usart_display_buffer, Font_7x10, White);
+
+    ssd1306_UpdateScreen();  // Actualizar la pantalla
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-	/* Data received in USART2 */
-	if (huart->Instance == USART2) {
-		if (usart2_data >= '0' && usart2_data <= '9') {
-			ring_buffer_write(&usart2_rb, usart2_data);
-
-			if (count_uart < UART_BUFFER_SIZE) {
-				// Almacenar el dato recibido en el buffer
-				uart_num[count_uart++] = usart2_data;
-				printf("Received: %c\r\n", usart2_data);
-			}
-			else {
-				// Excedió el tamaño permitido, imprimir error
-				printf("USART2: Error\r\n");
-				memset(uart_num, 0, UART_BUFFER_SIZE);  // Limpiar el buffer
-				count_uart = 0;  // Reiniciar el contador
-			}
-		}
-		HAL_UART_Receive_IT(&huart2, &usart2_data, 1);
-	}
+    if (huart->Instance == USART2) {
+        if (usart2_data >= '0' && usart2_data <= '9') {
+            // Almacenar el dígito recibido y actualizar la pantalla
+            if (usart_display_index < MAX_USART_DIGITS) {
+                usart_display_buffer[usart_display_index++] = usart2_data;
+                usart_display_buffer[usart_display_index] = '\0';  // Asegurar que es una cadena válida
+                Update_Display();
+                printf("USART2: %s\r\n", usart_display_buffer);
+            } else {
+                strcpy(usart_display_buffer, "Error");
+                Update_Display();
+                printf("USART2 Error\r\n");
+            }
+        }
+        HAL_UART_Receive_IT(&huart2, &usart2_data, 1);
+    }
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    if (GPIO_Pin == B1_Pin)
-    {
+    if (GPIO_Pin == B1_Pin) {
         return;
     }
 
     uint8_t key_pressed = keypad_scan(GPIO_Pin);
-    if (key_pressed != 0xFF)
-    {
+    if (key_pressed != 0xFF) {
         printf("Tecla presionada: %c\r\n", key_pressed);
-
-        if (key_pressed != '#' && key_pressed != '*')
-        {
-            if (display_index < MAX_DIGITS)
-            {
-                display_buffer[display_index++] = key_pressed;  // Agregar el dígito presionado al buffer
-                display_buffer[display_index] = '\0';           // Asegurarse de que el buffer sea un string válido
-
-                // Mostrar en pantalla "Keypad: " seguido de la tecla presionada
-                ssd1306_Fill(Black);  // Limpiar la pantalla
-                ssd1306_SetCursor(0, 0);  // Posicionar el cursor
-                ssd1306_WriteString("Keypad: ", Font_7x10, White);  // Escribir "Keypad: "
-                ssd1306_WriteString(display_buffer, Font_7x10, White);  // Escribir la secuencia ingresada
-                ssd1306_UpdateScreen();  // Actualizar la pantalla
-
+        if (key_pressed != '#' && key_pressed != '*') {
+            if (display_index < MAX_DIGITS) {
+                display_buffer[display_index++] = key_pressed;
+                display_buffer[display_index] = '\0';  // Asegurarse de que sea una cadena válida
+                Update_Display();  // Actualizar la pantalla
                 printf("Pantalla actualizada: %s\r\n", display_buffer);
-            }
-            else
-            {
-                strcpy(display_buffer, "Keypad: Error");  // Mostrar error si se excede el límite
+            } else {
+                strcpy(display_buffer, "Error");
                 Update_Display();
                 printf("Keypad Error\r\n");
             }
-        }
-        else if (key_pressed == '#')
-        {
-            printf("#: %s\r\n", display_buffer);
-            display_index = 0;  // Reiniciar el índice
-        }
-        else if (key_pressed == '*')
-        {
-            display_index = 0;  // Reiniciar el índice y el buffer
-            memset(display_buffer, 0, DISPLAY_BUFFER_SIZE);  // Limpiar el buffer
-            Update_Display();  // Limpiar la pantalla
-            printf("Pantalla y buffer reiniciados\r\n");
+        } else if (key_pressed == '#') {
+            // Reiniciar buffer USART2
+            usart_display_index = 0;
+            memset(usart_display_buffer, 0, sizeof(usart_display_buffer));
+            Update_Display();
+            printf("Buffer USART2 reiniciado\r\n");
+        } else if (key_pressed == '*') {
+            // Reiniciar solo el buffer del teclado
+            display_index = 0;
+            memset(display_buffer, 0, DISPLAY_BUFFER_SIZE);
+            Update_Display();
+            printf("Buffer del Keypad reiniciados\r\n");
         }
     }
 }
