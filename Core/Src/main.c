@@ -83,15 +83,28 @@ void Update_Display()
 {
     ssd1306_Fill(Black);  // Limpia la pantalla
 
-    // Mostrar el buffer del Keypad
+    // Mostrar los últimos dos dígitos del Keypad
     ssd1306_SetCursor(0, 0);
     ssd1306_WriteString("Keypad: ", Font_7x10, White);
-    ssd1306_WriteString(display_buffer, Font_7x10, White);
+    if (display_index >= 2) {
+        ssd1306_WriteString(&display_buffer[display_index - 2], Font_7x10, White);
+    } else {
+        ssd1306_WriteString(display_buffer, Font_7x10, White);
+    }
 
-    // Mostrar el buffer del USART2
+    // Mostrar los últimos dos dígitos del USART2
     ssd1306_SetCursor(0, 15);  // Ajustar la posición para no sobreponer
     ssd1306_WriteString("USART2: ", Font_7x10, White);
-    ssd1306_WriteString(usart_display_buffer, Font_7x10, White);
+    if (usart_display_index >= 2) {
+        ssd1306_WriteString(&usart_display_buffer[usart_display_index - 2], Font_7x10, White);
+    } else {
+        ssd1306_WriteString(usart_display_buffer, Font_7x10, White);
+    }
+
+    // Mostrar el resultado de la suma
+    ssd1306_SetCursor(0, 30);
+    ssd1306_WriteString("Suma: ", Font_7x10, White);
+    ssd1306_WriteString(uart_num, Font_7x10, White);
 
     ssd1306_UpdateScreen();  // Actualizar la pantalla
 }
@@ -151,6 +164,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         }
     }
 }
+
 /* USER CODE END 0 */
 
 /**
