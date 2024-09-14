@@ -31,27 +31,16 @@
 #include "keypad.h"
 /* USER CODE END Includes */
 
-/* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
-
-/* USER CODE END PTD */
-
 /* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
 #define KEYPAD_RB_LEN 4
-#define USART2_RB_LEN 4
+#define USART2_RB_LEN 6
 #define DISPLAY_BUFFER_SIZE 5  // Buffer para 4 dígitos + terminador
 #define MAX_DIGITS 4           // Límite de dígitos
+#define UART_BUFFER_SIZE 6     // Tamaño máximo de dígitos a recibir por USART2
 /* USER CODE END PD */
-
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
-
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -63,8 +52,11 @@ uint8_t usart2_data = 0xFF;
 uint8_t usart2_buffer[USART2_RB_LEN];
 ring_buffer_t usart2_rb;
 
+char uart_num[UART_BUFFER_SIZE + 1];  // Buffer para recibir el número por UART (6 dígitos + terminador)
 char display_buffer[DISPLAY_BUFFER_SIZE];  // Buffer de visualización
-uint8_t display_index = 0;                 // �?ndice para el buffer
+uint8_t display_index = 0;                 // Índice para el buffer
+
+volatile int count_uart = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -94,18 +86,25 @@ void Update_Display()
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    if (huart->Instance == USART2)
-    {
-        if (usart2_data >= '0' && usart2_data <= '9')
-        {
-            ring_buffer_write(&usart2_rb, usart2_data);
-            if (ring_buffer_is_full(&usart2_rb) != 0)
-            {
-                // Lógica para manejar buffer completo (si es necesario)
-            }
-        }
-        HAL_UART_Receive_IT(&huart2, &usart2_data, 1);
-    }
+	/* Data received in USART2 */
+	if (huart->Instance == USART2) {
+		if (usart2_data >= '0' && usart2_data <= '9') {
+			ring_buffer_write(&usart2_rb, usart2_data);
+
+			if (count_uart < UART_BUFFER_SIZE) {
+				// Almacenar el dato recibido en el buffer
+				uart_num[count_uart++] = usart2_data;
+				printf("Received: %c\r\n", usart2_data);
+			}
+			else {
+				// Excedió el tamaño permitido, imprimir error
+				printf("USART2: Error\r\n");
+				memset(uart_num, 0, UART_BUFFER_SIZE);  // Limpiar el buffer
+				count_uart = 0;  // Reiniciar el contador
+			}
+		}
+		HAL_UART_Receive_IT(&huart2, &usart2_data, 1);
+	}
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
@@ -117,13 +116,16 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
     uint8_t key_pressed = keypad_scan(GPIO_Pin);
     if (key_pressed != 0xFF)
-    {	printf("Tecla presionada: %c\r\n", key_pressed);
+    {
+        printf("Tecla presionada: %c\r\n", key_pressed);
+
         if (key_pressed != '#' && key_pressed != '*')
         {
             if (display_index < MAX_DIGITS)
             {
                 display_buffer[display_index++] = key_pressed;  // Agregar el dígito presionado al buffer
                 display_buffer[display_index] = '\0';           // Asegurarse de que el buffer sea un string válido
+
                 // Mostrar en pantalla "Keypad: " seguido de la tecla presionada
                 ssd1306_Fill(Black);  // Limpiar la pantalla
                 ssd1306_SetCursor(0, 0);  // Posicionar el cursor
@@ -162,7 +164,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   */
 int main(void)
 {
-
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -196,6 +197,8 @@ int main(void)
 
     HAL_UART_Receive_IT(&huart2, &usart2_data, 1);  // Iniciar recepción por UART
 
+    ring_buffer_init(&usart2_rb, usart2_buffer, USART2_RB_LEN); // buffer para uart
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -210,6 +213,7 @@ int main(void)
     /* USER CODE BEGIN 3 */
   /* USER CODE END 3 */
 }
+
 
 /**
   * @brief System Clock Configuration
