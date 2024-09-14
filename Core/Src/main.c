@@ -217,6 +217,15 @@ int main(void)
                 HAL_UART_Transmit(&huart2, (uint8_t *)uart_num, strlen(uart_num), 1000);
                 HAL_UART_Transmit(&huart2, (uint8_t *)"\r\n", 2, 1000);
                 flag_sum = 0;
+                // prender el led si el resultado es par
+				if (sum % 2 == 0)
+				{
+					HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
+				}
+				else
+				{
+					HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+				}
             }
             else
             {
